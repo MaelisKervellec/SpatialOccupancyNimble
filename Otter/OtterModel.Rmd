@@ -1,5 +1,5 @@
 ---
-title: "Otter case study :otter:"
+title: "Otter case study"
 author: "Maëlis Kervellec"
 date: "2023-08-03"
 output: html_document
