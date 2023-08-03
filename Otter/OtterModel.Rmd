@@ -1,0 +1,444 @@
+---
+title: "Otter case study :otter:"
+author: "Maëlis Kervellec"
+date: "2023-08-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(ggplot2)
+library(raster)
+library(gdistance)
+library(mapview)
+library(nimble)
+library(parallel)
+```
+
+# I - Load detection/non-detection data 
+```{r}
+source("Otter/functions.R")
+
+load("Otter/data/y.RData") #detection data
+load("Otter/data/xy.RData") #sites coordinates in Lambert 92
+
+# Look at the data 
+M <- nrow(y) # number of sites 
+J <- 4 # number of survey
+T <- 2 # number of season
+y1 <- array(y, dim = c(M,J,T))
+
+# Number of sites surveyed
+dim(y1)
+
+# Number of sites were otter was detected at least once
+dim(y1)[1] - which(apply(y1, 1, sum, na.rm=TRUE) == 0) %>% length()
+
+# Number of sites where otter was detected at least once for each season
+dim(y1)[1] - which(apply(y1[,,1],1,sum, na.rm = TRUE) == 0) %>% length()
+dim(y1)[1] - which(apply(y1[,,2],1,sum, na.rm = TRUE) == 0) %>% length()
+```
+
+# II - Load covariates 
+```{r}
+# Delimitation of the study area
+StudyArea <- tibble(X = c(464114.4,464114.4,707614.4,707614.4),
+                    Y = c(2026098.9 ,1835598.9,1835598.9,2026098.9 )) %>%
+  sf::st_as_sf(coords = c("X","Y"), crs = 27572) %>%
+  sf::st_make_grid() %>%
+  sf::st_union()
+
+# Distance to rivers in the Massif central 
+# Download BDtopo at https://geoservices.ign.fr/bdtopo
+load("Otter/data/DistanceToRiverMassifCentralBuffer.RData") 
+
+rcov <- Dist2rivers %>% aggregate(2)
+rcov@data@values <- rcov@data@values / sd(rcov@data@values,na.rm = TRUE)
+
+# Elevation
+# Download BDalti at https://geoservices.ign.fr/bdalti
+load("Otter/data/sites.RData")
+```
+# III - Model 
+## Compute cached matrix
+```{r}
+alphaValues <- round(seq(0, 5, by=0.1), digits=1)
+cached.circuit.reduced <- array(NA, c(M, M, length(alphaValues)))
+
+# Take days to compute ths matrix
+
+# for(a in 1:length(alphaValues)){
+#   cached.circuit.reduced[1:M,1:M,a] <- CircuitDistance(alphaValues[a]) # compute distances between habitat cells and traps for each defined alpha2
+#   save(cached.circuit.reduced, file = "Otter/data/cached_circuit_MC_reduced200m.RData")
+# } 
+load("Otter/data/cached_circuit_MC_reduced200m.RData")
+```
+
+## Run 
+```{r,eval = FALSE}
+this_cluster <- makeCluster(3)
+
+# Data and constants --------------------------
+my.constants <- list(nsites = M,
+                     nsurveys = J,
+                     nseasons = T)
+
+y <- array(y, dim = c(M,J,T))
+my.data <- list(y = y,
+                cached = cached.circuit.reduced,
+                elev = scale(sites$elev)[1:158,],
+                one = 1)
+
+run_MCMC_allcode <- function(info, data, constants, model) {
+  library(nimble)
+  
+  occupancy <- nimble::nimbleModel(code = model,
+                                   data = data,
+                                   constants = constants,
+                                   inits = info$inits,
+                                   calculate = FALSE) # first tip
+  
+  Coccupancy <- nimble::compileNimble(occupancy)
+  
+  
+  occupancyConf <- nimble::configureMCMC(occupancy,
+                                         enableWAIC = TRUE,
+                                         monitors = c("z", "beta_psi1", "alpha_psi1", "p", "sigma", "gamma0", "alpha2", "phi"))
+  occupancyConf$removeSamplers(c('alpha2'))
+  occupancyConf$addSampler(target = c('alpha2'), type = 'slice')
+  
+  
+  occupancyMCMC <- buildMCMC(occupancyConf, useConjugacy = FALSE)
+  
+  CoccupancyMCMC <- compileNimble(occupancyMCMC,
+                                  project = occupancy)
+  
+  # Run Nimble
+  samples <- nimble::runMCMC(mcmc = CoccupancyMCMC,
+                             niter = 10000,
+                             nburnin = 1000,
+                             WAIC = TRUE)
+  #setSeed = info$seed)
+  return(samples)}
+
+per_chain_info <- list(
+  list(#seed = 1,
+    inits = list(z = array(1, dim = c(M, T)),
+                 beta_psi1 = 0.5,
+                 alpha_psi1 = 0,
+                 p = c(0.5, 0.5),
+                 sigma = 0.5,
+                 gamma0 = 0.1,
+                 alpha2 = 1,
+                 phi = 0.2)),
+  list(#seed = 2,
+    inits = list(z = array(1, dim = c(M, T)),
+                 beta_psi1 = 3,
+                 alpha_psi1 = -1,
+                 p = c(0.7, 0.7),
+                 sigma = 1,
+                 gamma0 = 0.2,
+                 alpha2 = 4,
+                 phi = 0.9)),
+  list(#seed = 3,
+    inits = list(z = array(1, dim = c(M, T)),
+                 beta_psi1 = 2,
+                 alpha_psi1 = 1,
+                 p = c(0.6, 0.6),
+                 sigma = 0.2,
+                 gamma0 = 0.1,
+                 alpha2 = 3,
+                 phi = 0.7)))
+
+
+chain_output <- parLapply(cl = this_cluster, X = per_chain_info,
+                          fun = run_MCMC_allcode,
+                          data = my.data,
+                          constants = my.constants,
+                          model = model.otter)
+stopCluster(this_cluster)
+
+output <- list(chain_output[[1]][["samples"]],
+               chain_output[[2]][["samples"]],
+               chain_output[[3]][["samples"]])
+
+# save(output, file = "Otter/output/OccupancyOtterChains200mNorescue.RData")
+```
+
+
+```{r}
+load("Otter/output/OccupancyOtterChains200mNorescue.RData")
+MCMCvis::MCMCtrace(object = output,
+                   pdf = FALSE, # no export to PDF
+                   params = c("beta_psi1","alpha_psi1", "p", "sigma", "gamma0", "alpha2", "phi"),
+                   ind = TRUE, 
+                   iter = 5000) 
+```
+
+
+# IV - Results
+
+```{r}
+# Get OpenStreetMap tiles 
+osm <- maptiles::get_tiles(StudyArea, crop = TRUE, zoom = 8) 
+credit_text <- maptiles::get_credit("OpenStreetMap")
+```
+
+## Detection probability
+```{r}
+outputs <- rbind(output[[1]],output[[2]],output[[3]]) 
+
+# Bind detection probability distributions
+Det <- dplyr::tibble(prob = c(outputs[,5],outputs[,6]),
+                     year = c(rep("2003", nrow(outputs)),rep("2011", nrow(outputs))))
+
+# Compute 95% credible interval
+Errors <- dplyr::tibble(year = c("2003","2011"),
+                        Upper = c(quantile(outputs[,5], 0.975),quantile(outputs[,6], 0.975)),
+                        Lower = c(quantile(outputs[,5], 0.025),quantile(outputs[,6], 0.025)),
+                        Median = c(median(outputs[,5]), median(outputs[,6])))
+
+# Graph
+Detprob <- ggplot() +
+  geom_violin(data = Det, aes(x = year, y = prob, fill = year), trim = FALSE, alpha = 0.4, color = NA) + 
+  geom_errorbar(data = Errors, aes(x=year, ymin=Lower, ymax=Upper, colour = year), width=0.08) +
+  geom_point(data = Errors, aes(x = year, y = Median, colour = year), size = 2) +
+  scale_fill_manual(values = c("cornflowerblue", "#2541b2")) +
+  scale_color_manual(values = c("cornflowerblue", "#2541b2")) +
+  labs(x = "Sampling season", y = "Detection probability") +
+  ylim(0,1) +
+  theme_bw() +
+  theme(text = element_text(size = 28),legend.position = "none")
+
+Detprob
+
+# save
+#ggplot2::ggsave(plot = Detprob, dpi = 600,  width = 7, height = 7, device = "png", filename = "Otter/outputs/Detprob.png")
+```
+
+## Initial occupancy as a function of elevation  
+```{r}
+elev.scaled <- scale(sites$elev)[1:158,]
+occ.elev <- matrix(NA, nrow = M, ncol = 3*9000)
+for(i in 1:M){
+  occ.elev[i,] <- inv.logit(outputs[,3]*elev.scaled[i] + outputs[,2])
+}
+
+
+Occ.elev <- tibble(median = apply(occ.elev, MARGIN = 1, FUN=median, na.rm=TRUE),
+                   lower95 = apply(occ.elev, MARGIN = 1, FUN=quantile,na.rm=TRUE, probs = 0.025),
+                   upper95 = apply(occ.elev, MARGIN = 1, FUN=quantile,na.rm=TRUE, probs = 0.975),
+                   elev = sites$elev)
+
+InitialOcc <- ggplot() +
+  geom_ribbon(data = Occ.elev, mapping = aes(ymin=lower95, ymax=upper95, x = elev), alpha= 0.5, fill = "cornflowerblue") +
+  geom_line(data = Occ.elev, mapping = aes(x = elev, y = median), color = "cornflowerblue") + 
+  labs(x = "Elevation (m)", y = "Initial occupancy probability", col = "") +
+  ylim(0,1) +
+  theme_bw() +
+  theme(text = element_text(size = 28)) 
+
+InitialOcc
+
+# save
+#ggplot2::ggsave(plot = InitialOcc, dpi = 600,  width = 7, height = 7, device = "png", filename = "Otter/outputs/InitialOcc.png")
+```
+## Extinction / colonization probabilities / resistance parameter 
+```{r}
+alphaValues <- round(seq(0, 5, by=0.1), digits=1)
+
+# resistance parameter 
+alpha2 <- outputs[,1]
+median(alpha2)
+quantile(alpha2,na.rm=TRUE, probs = 0.025)
+quantile(alpha2,na.rm=TRUE, probs = 0.975)
+
+# extinction probability 
+epsilon <- 1- outputs[,7]
+median(epsilon)
+quantile(epsilon,na.rm=TRUE, probs = 0.025)
+quantile(epsilon,na.rm=TRUE, probs = 0.975)
+
+# baseline colonization probability 
+gamma0 <- outputs[,4]
+median(gamma0)
+quantile(gamma0 ,na.rm=TRUE, probs = 0.025)
+quantile(gamma0 ,na.rm=TRUE, probs = 0.975)
+
+
+```
+
+
+```{r, eval=FALSE}
+half normal colonization probability
+HNcol <- data.frame(d = NA,
+                    median = NA,
+                    lower = NA,
+                    upper = NA)
+dred <- cached.circuit.reduced[,,40]/ sd(cached.circuit.reduced[,,40])
+for (j in 1:dim(cached.circuit.reduced)[2]){
+  HNcolj <- data.frame(d = cached.circuit.reduced[j,,40],
+                       median = NA,
+                       lower = NA,
+                       upper = NA)
+
+  for (i in 1:ncol(dred)){
+    col <- outputs[,4]* exp(-dred[j,i]^2 / (2 * outputs[,8]^2))
+    HNcolj$median[i] <- median(col)
+    HNcolj$lower[i] <- quantile(col,na.rm=TRUE, probs = 0.025)
+    HNcolj$upper[i] <- quantile(col,na.rm=TRUE, probs = 0.975)
+    }
+  HNcol <- HNcol %>% rbind(HNcolj)
+  }
+
+Col <- ggplot() +
+  geom_ribbon(data = HNcol, mapping = aes(ymin=lower, ymax=upper, x = d), alpha= 0.5, fill = "cornflowerblue") +
+  geom_line(data = HNcol, mapping = aes(x = d, y = median), color = "cornflowerblue") +
+  labs(x = "Resistance distance", y = "Colonisation probability", col = "") +
+  #ylim(0,1) +
+  theme_bw() +
+  theme(text = element_text(size = 28))
+
+# save 
+# ggplot2::ggsave(plot = Col, dpi = 600,  width = 7, height = 7, device = "png", filename = "Otter/outputs/Col.png")
+```
+![Pairwise colonization probability](Otter/outputs/Col.png)
+## Posterior occupancy
+```{r}
+Z <- xy %>%
+  as.data.frame()%>%
+  mutate(z1 = outputs[,9:166] %>%
+           apply(MARGIN = 2, FUN = median),
+         z1_sd = outputs[,9:166] %>%
+           apply(MARGIN = 2, FUN = sd)) %>%
+  mutate(z2 = outputs[,167:324] %>%
+           apply(MARGIN = 2, FUN = median),
+         z2_sd = outputs[,167:324] %>%
+           apply(MARGIN = 2, FUN = sd))
+
+Palette <- colorRampPalette(c( "white","#e9c46a", "#f4a261", "#e76f51"))
+
+# Occupancy at the first season
+Occ_2003 <- ggplot() +
+  tidyterra::geom_spatraster_rgb(data=osm) +
+  geom_point(data = Z, mapping = aes(x = X, y = Y,fill = z1), shape = 21, color = "black", size = 2) + 
+  scale_fill_gradientn(colors = Palette(4)) +
+  ggspatial::annotation_scale(location = "bl", line_width = 0.15 ,height = unit(0.15, "cm")) +
+  ggspatial::annotation_north_arrow(location = "tr",height = unit(1, "cm"), width = unit(1, "cm"), style = ggspatial::north_arrow_nautical(text_size = 8)) +
+  labs(title = "2003 - 2005", x = "", y = "", fill = "Median posterior \noccupancy") +
+  annotate("text", x = Inf, y = -Inf, hjust = 1.1, vjust = -0.5, label = credit_text,size = 2.5, color = "black",fontface = "italic")+
+  theme_bw()
+
+# Occupancy at the second season
+Occ_2011 <- ggplot() +
+  tidyterra::geom_spatraster_rgb(data=osm) +
+  geom_point(data = Z, mapping = aes(x = X, y = Y,fill = z2), shape = 21, color = "black", size = 2) + 
+  scale_fill_gradientn(colors = Palette(4)) +
+  ggspatial::annotation_scale(location = "bl", line_width = 0.15 ,height = unit(0.15, "cm")) +
+  ggspatial::annotation_north_arrow(location = "tr",height = unit(1, "cm"), width = unit(1, "cm"), style = ggspatial::north_arrow_nautical(text_size = 8)) +
+  labs(title = "2011 - 2012", x = "", y = "", fill = "Median posterior \noccupancy") +
+  annotate("text", x = Inf, y = -Inf, hjust = 1.1, vjust = -0.5, label = credit_text,size = 2.5, color = "black",fontface = "italic")+
+  theme_bw()
+
+Palette <- colorRampPalette(c( "white","#94d2bd", "#2a9d8f", "#264653"))
+
+# Standard deviation at the first season
+Occ_2003_sd <- ggplot() +
+  tidyterra::geom_spatraster_rgb(data=osm) +
+  geom_point(data = Z, mapping = aes(x = X, y = Y,fill = z1_sd), shape = 21, color = "black", size = 2) + 
+  scale_fill_gradientn(colors = Palette(4)) +
+  ggspatial::annotation_scale(location = "bl", line_width = 0.15 ,height = unit(0.15, "cm")) +
+  ggspatial::annotation_north_arrow(location = "tr",height = unit(1, "cm"), width = unit(1, "cm"), style = ggspatial::north_arrow_nautical(text_size = 8)) +
+  labs(title = "2003 - 2005", x = "", y = "", fill = "SD") +
+  annotate("text", x = Inf, y = -Inf, hjust = 1.1, vjust = -0.5, label = credit_text,size = 2.5, color = "black",fontface = "italic")+
+  theme_bw()
+
+# Standard deviation at the second season
+Occ_2011_sd <- ggplot() +
+  tidyterra::geom_spatraster_rgb(data=osm) +
+  geom_point(data = Z, mapping = aes(x = X, y = Y,fill = z2_sd), shape = 21, color = "black", size = 2) + 
+  scale_fill_gradientn(colors = Palette(4)) +
+  ggspatial::annotation_scale(location = "bl", line_width = 0.15 ,height = unit(0.15, "cm")) +
+  ggspatial::annotation_north_arrow(location = "tr",height = unit(1, "cm"), width = unit(1, "cm"), style = ggspatial::north_arrow_nautical(text_size = 8)) +
+  labs(title = "2011 - 2012", x = "", y = "", fill = "SD") +
+  annotate("text", x = Inf, y = -Inf, hjust = 1.1, vjust = -0.5, label = credit_text,size = 2.5, color = "black",fontface = "italic")+
+  theme_bw()
+
+Occ <- ggpubr::ggarrange(Occ_2003, Occ_2003_sd, Occ_2011, Occ_2011_sd, 
+                         labels = c("A", "B", "C", "D"),
+                         ncol = 2, nrow = 2)
+Occ
+
+# save
+#ggplot2::ggsave(plot = Occ, dpi = 600,  width = 12, height = 7, device = "png", filename = "Otter/outputs/Occ.png")
+```
+
+## Resistance map 
+```{r}
+rcov10 <- aggregate(rcov,10) 
+cost.value <- array(NA, dim =c(length(rcov10@data@values),3*5000))
+for(j in 1:(3*5000)){
+  cost.value[,j] <- exp(outputs[j,1] * rcov10@data@values)
+}
+
+Cost <- tibble(median = apply(cost.value, MARGIN = 1, FUN=median, na.rm=TRUE),
+               sd = apply(cost.value, MARGIN = 1, FUN=sd, na.rm=TRUE)) %>%
+  cbind(rcov10 %>% 
+          raster::as.data.frame(xy = TRUE))
+
+Palette <- colorRampPalette(c("#095786","#0090ab","#e6cea0","#db4646","#ae0000")) 
+ResSurface <- ggplot() +
+  tidyterra::geom_spatraster_rgb(data=osm) + 
+  geom_raster(data = Cost,
+              mapping = aes(x = x, y = y, fill = median), alpha = 0.7) +
+  scale_fill_gradientn(name = "Median posterior \ncost value", trans = "log",na.value = "white", colors = Palette(4)) +
+  geom_point(data = Z, mapping = aes(x = X, y = Y), size = 0.7, shape = 4) +
+  ggspatial::annotation_scale(location = "bl", line_width = 0.15 ,height = unit(0.15, "cm")) +
+  ggspatial::annotation_north_arrow(location = "tr",height = unit(1, "cm"), width = unit(1, "cm"), style = ggspatial::north_arrow_nautical(text_size = 8)) +
+  labs(title = "", x = "", y = "") +
+  annotate("text", x = Inf, y = -Inf, hjust = 1.1, vjust = -0.5, label = credit_text,size = 2.5, color = "black",fontface = "italic")+
+  theme_bw() 
+
+Palette <- colorRampPalette(c("white","#94d2bd", "#2a9d8f", "#264653"))
+ResSurface_sd <- ggplot() +
+  tidyterra::geom_spatraster_rgb(data=osm) + 
+  geom_raster(data = Cost,
+              mapping = aes(x = x, y = y, fill = sd), alpha = 0.7) +
+  scale_fill_gradientn(name = "SD", trans = "log", na.value = "white", colors = Palette(4)) +
+  geom_point(data = Z, mapping = aes(x = X, y = Y), size = 0.7, shape = 4) +
+  ggspatial::annotation_scale(location = "bl", line_width = 0.15 ,height = unit(0.15, "cm")) +
+  ggspatial::annotation_north_arrow(location = "tr",height = unit(1, "cm"), width = unit(1, "cm"), style = ggspatial::north_arrow_nautical(text_size = 8)) +
+  labs(title = "", x = "", y = "") +
+  annotate("text", x = Inf, y = -Inf, hjust = 1.1, vjust = -0.5, label = credit_text,size = 2.5, color = "black",fontface = "italic")+
+  theme_bw() 
+ResistanceSurface <- ggpubr::ggarrange(ResSurface, ResSurface_sd, 
+                                       labels = c("A", "B"),
+                                       ncol = 2, nrow = 1)
+
+ResistanceSurface
+
+# save
+#ggplot2::ggsave(plot = ResistanceSurface, dpi = 600, width = 11, height = 4,device = "png", filename = "Otter/outputs/ResistanceSurface.png")
+```
+
+## Elevation
+```{r}
+Palette <- colorRampPalette(c("#095786", "#43aa8b","#90be6d", "#f9c74f","#f8961e","#f3722c","#f94144")) 
+Elevation.plot <- ggplot() +
+  tidyterra::geom_spatraster_rgb(data=osm) +
+  geom_point(data = xy %>% as.data.frame() %>% mutate(elev = sites$elev), 
+             mapping = aes(x = X, y = Y, fill = elev), shape = 21, color = "black", size = 2) + 
+  scale_fill_gradientn(colors = Palette(4)) +
+  ggspatial::annotation_scale(location = "bl", line_width = 0.15 ,height = unit(0.15, "cm")) +
+  ggspatial::annotation_north_arrow(location = "tl",height = unit(1, "cm"), width = unit(1, "cm"), style = ggspatial::north_arrow_nautical(text_size = 8)) +
+  labs(title = "", x = "", y = "", fill = "Elevation (m)") +
+  annotate("text", x = Inf, y = -Inf, hjust = 1.1, vjust = -0.5, label = credit_text,size = 2.5, color = "black",fontface = "italic")+
+  theme_bw()
+
+Elevation.plot
+# save
+#ggplot2::ggsave(plot = Elevation.plot, dpi = 600, device = "png", filename = "Otter/outputs/Elevation_plot.png")
+```
+
