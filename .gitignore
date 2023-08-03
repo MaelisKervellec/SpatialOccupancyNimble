@@ -3,4 +3,7 @@
 .RData
 .Ruserdata
 Otter/OtterModel.html
-Lynx/data
+Lynx/data/cached_circuit_Lynx_reduced99.RData
+Lynx/outputs/ResistanceSurfaceGrid.png
+Lynx/outputs/ForestCoverMap.png
+Lynx/outputs/Occ.png

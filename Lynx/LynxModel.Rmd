@@ -262,3 +262,302 @@ ForestCoverMap
 # ggplot2::ggsave(plot = ForestCoverMap, dpi = 600,  width = 7, height = 7, device = "png", filename = "Lynx/outputs/ForestCoverMap.png")
 ```
 
+
+## Detection probability
+```{r}
+# Bind chains 
+outputs <- rbind(output[[1]],output[[2]],output[[3]]) %>%
+  as.data.frame() 
+
+scaled.effort <- (Data[["effort"]]- mean(Data[["effort"]] %>% as.matrix(), na.rm=F))/sd(Data[["effort"]] %>% as.matrix(), na.rm=F)
+
+det.prob <- matrix(NA, nrow = M, ncol = 5000*3)
+for(i in 1:M){
+  det.prob[i,] <- inv.logit(outputs$beta_p*scaled.effort[i,3] + outputs$alpha_p)
+}
+
+Det <- tibble(median = apply(det.prob, MARGIN = 1, FUN=median, na.rm=TRUE),
+              lower95 = apply(det.prob, MARGIN = 1, FUN=quantile,na.rm=TRUE, probs = 0.025),
+              upper95 = apply(det.prob, MARGIN = 1, FUN=quantile,na.rm=TRUE, probs = 0.975),
+              effort = Data[["effort"]][,3])
+
+Detprob <- ggplot() +
+  geom_ribbon(data = Det, mapping = aes(ymin=lower95, ymax=upper95, x = effort), alpha= 0.5, fill = "#dda15e") +
+  geom_line(data = Det, mapping = aes(x = effort, y = median), color = "#dda15e") +
+  labs(x = "Sampling effort", y = "Detection probability") +
+  ylim(0,1) +
+  theme_bw() +
+  theme(text = element_text(size = 28),legend.position = "none")
+
+Detprob
+
+# save
+#ggplot2::ggsave(plot = Detprob, dpi = 600,  width = 7, height = 7, device = "png", filename = "Lynx/outputs/Detprob.png")
+```
+
+## Initial occupancy probability
+```{r}
+scaled.forest <- scale(ForestCover)[1:M]
+
+occ.prob <- matrix(NA, nrow = M, ncol = 5000*3)
+for(i in 1:M){
+  occ.prob[i,] <- inv.logit(outputs$beta_psi1*scaled.forest[i] + outputs$alpha_psi1)
+}
+
+Det <- tibble(median = apply(occ.prob, MARGIN = 1, FUN=median, na.rm=TRUE),
+              lower95 = apply(occ.prob, MARGIN = 1, FUN=quantile,na.rm=TRUE, probs = 0.025),
+              upper95 = apply(occ.prob, MARGIN = 1, FUN=quantile,na.rm=TRUE, probs = 0.975),
+              forest = ForestCover)
+
+InitialOcc <- ggplot() +
+  geom_ribbon(data = Det, mapping = aes(ymin=lower95, ymax=upper95, x = forest), alpha= 0.5, fill = "#3a5a40") +
+  geom_line(data = Det, mapping = aes(x = forest, y = median), color = "#3a5a40") +
+  labs(x = "Forest Cover", y = "Initial occupancy probability") +
+  ylim(0,1) +
+  theme_bw() + 
+  theme(text = element_text(size = 28),legend.position = "none")
+
+InitialOcc
+
+# save
+# ggplot2::ggsave(plot = InitialOcc, dpi = 600,  width = 7, height = 7, device = "png", filename = "Lynx/outputs/InitialOcc.png")
+```
+
+# Extinction, colonisation probability, resistance parameter
+```{r}
+# extinction probability 
+epsilon <- 1- outputs[,7]
+median(epsilon)
+quantile(epsilon,na.rm=TRUE, probs = 0.025)
+quantile(epsilon,na.rm=TRUE, probs = 0.975)
+
+# baseline colonisation probability 
+gamma0 <- outputs[,6]
+median(gamma0)
+quantile(gamma0 ,na.rm=TRUE, probs = 0.025)
+quantile(gamma0 ,na.rm=TRUE, probs = 0.975)
+
+# resistance parameter 
+alpha2 <- outputs[,1]
+median(alpha2)
+quantile(alpha2,na.rm=TRUE, probs = 0.025)
+quantile(alpha2,na.rm=TRUE, probs = 0.975)
+```
+
+
+```{r, eval = FALSE}
+# half normal colonization probability 
+alphaValues <- round(seq(-5, 0, by=0.1), digits=1)
+alphaValues[49]
+HNcol <- data.frame(d = NA, 
+                    median = NA,
+                    lower = NA,
+                    upper = NA)
+dred <- cached.circuit.reduced[,,49]/ sd(cached.circuit.reduced[,,49])
+for (j in 1:dim(cached.circuit.reduced)[2]){
+  HNcolj <- data.frame(d = cached.circuit.reduced[j,,49], 
+                       median = NA,
+                       lower = NA,
+                       upper = NA)
+  
+  for (i in 1:ncol(dred)){
+    col <- outputs[,6]* exp(-dred[j,i]^2 / (2 * outputs[,8]^2))
+    HNcolj$median[i] <- median(col)
+    HNcolj$lower[i] <- quantile(col,na.rm=TRUE, probs = 0.025)
+    HNcolj$upper[i] <- quantile(col,na.rm=TRUE, probs = 0.975)
+    }
+  HNcol <- HNcol %>% rbind(HNcolj)
+  }
+
+Col <- ggplot() +
+  geom_ribbon(data = HNcol, mapping = aes(ymin=lower, ymax=upper, x = d), alpha= 0.5, fill = "#dda15e") +
+  geom_line(data = HNcol, mapping = aes(x = d, y = median), color = "#dda15e") + 
+  labs(x = "Resistance distance", y = "Colonisation probability", col = "") +
+  #ylim(0,1) +
+  theme_bw() +
+  theme(text = element_text(size = 28)) 
+
+# ggplot2::ggsave(plot = Col, dpi = 600,  width = 7, height = 7, device = "png", filename = "Lynx/outputs/Col.png")
+```
+
+
+## Posterior occupancy
+```{r}
+outputs.Z <- outputs[,9: 1940]
+
+Qinf <- function(row){
+  quantile(row, probs = 0.025)}
+Qsup <- function(row){
+  quantile(row, probs = 0.975)}
+
+
+Z <- gridFrCroppedSampled%>%
+  mutate(z1 = outputs.Z[,1:M] %>%
+           apply(MARGIN = 2, FUN = median),
+         z1_sd = outputs.Z[,1:M] %>%
+           apply(MARGIN = 2, FUN = sd),
+         z1_inf = outputs.Z[,1:M] %>%
+           apply(MARGIN = 2, FUN = Qinf),
+         z1_sup = outputs.Z[,1:M] %>%
+           apply(MARGIN = 2, FUN = Qsup)) %>%
+  
+  mutate(z2 = outputs.Z[,(M+1):(2*M)] %>%
+           apply(MARGIN = 2, FUN = median),
+         z2_sd = outputs.Z[,(M+1):(2*M)] %>%
+           apply(MARGIN = 2, FUN = sd),
+         z2_inf = outputs.Z[,(M+1):(2*M)] %>%
+           apply(MARGIN = 2, FUN = Qinf),
+         z2_sup = outputs.Z[,(M+1):(2*M)] %>%
+           apply(MARGIN = 2, FUN = Qsup)) %>%
+  
+  mutate(z3 = outputs.Z[,(2*M+1):(3*M)] %>%
+           apply(MARGIN = 2, FUN = median),
+         z3_sd = outputs.Z[,(2*M+1):(3*M)] %>%
+           apply(MARGIN = 2, FUN = sd),
+         z3_inf = outputs.Z[,(2*M+1):(3*M)] %>%
+           apply(MARGIN = 2, FUN = Qinf),
+         z3_sup = outputs.Z[,(2*M+1):(3*M)] %>%
+           apply(MARGIN = 2, FUN = Qsup))
+
+Palette <- colorRampPalette(c("white","#e9c46a", "#f4a261", "#e76f51"))
+
+Occ1 <- ggplot() +
+  tidyterra::geom_spatraster_rgb(data=osm) + 
+  geom_sf(data = Z, mapping = aes(fill = z1), alpha = 0.5) +
+  scale_fill_gradientn(colors = Palette(4)) +
+  ggspatial::annotation_scale(location = "bl", line_width = 0.15 ,height = unit(0.15, "cm")) +
+  ggspatial::annotation_north_arrow(location = "tr",height = unit(1, "cm"), width = unit(1, "cm"), style = ggspatial::north_arrow_nautical(text_size = 8)) +
+  labs(title = "1999 - 2000", x = "", y = "", fill = "Median posterior \noccupancy") +
+  annotate("text", x = Inf, y = -Inf, hjust = 1.1, vjust = -0.5, label = credit_text,size = 2.5, color = "black",fontface = "italic") +
+  theme_bw()
+
+Occ2 <- ggplot() +
+  tidyterra::geom_spatraster_rgb(data=osm) + 
+  geom_sf(data = Z, mapping = aes(fill = z2), alpha = 0.5) +
+  scale_fill_gradientn(colors = Palette(4)) +
+  ggspatial::annotation_scale(location = "bl", line_width = 0.15 ,height = unit(0.15, "cm")) +
+  ggspatial::annotation_north_arrow(location = "tr",height = unit(1, "cm"), width = unit(1, "cm"), style = ggspatial::north_arrow_nautical(text_size = 8)) +
+  labs(title = "2009 - 2010", x = "", y = "", fill = "Median posterior \noccupancy") +
+  annotate("text", x = Inf, y = -Inf, hjust = 1.1, vjust = -0.5, label = credit_text,size = 2.5, color = "black",fontface = "italic") +
+  theme_bw()
+
+Occ3 <- ggplot() +
+  tidyterra::geom_spatraster_rgb(data=osm) + 
+  geom_sf(data = Z, mapping = aes(fill = z3), alpha = 0.5) +
+  scale_fill_gradientn(colors = Palette(4)) +
+  ggspatial::annotation_scale(location = "bl", line_width = 0.15 ,height = unit(0.15, "cm")) +
+  ggspatial::annotation_north_arrow(location = "tr",height = unit(1, "cm"), width = unit(1, "cm"), style = ggspatial::north_arrow_nautical(text_size = 8)) +
+  labs(title = "2019 - 2020", x = "", y = "", fill = "Median posterior \noccupancy") +
+  annotate("text", x = Inf, y = -Inf, hjust = 1.1, vjust = -0.5, label = credit_text,size = 2.5, color = "black",fontface = "italic") +
+  theme_bw()
+
+# Standard Deviation 
+Palette <- colorRampPalette(c("white","#94d2bd", "#2a9d8f", "#264653"))
+
+Occ1_sd <- ggplot() +
+  tidyterra::geom_spatraster_rgb(data=osm) + 
+  geom_sf(data = Z, mapping = aes(fill = z1_sd), alpha = 0.5) +
+  scale_fill_gradientn(colors = Palette(4), limits = c(0,0.5)) +
+  ggspatial::annotation_scale(location = "bl", line_width = 0.15 ,height = unit(0.15, "cm")) +
+  ggspatial::annotation_north_arrow(location = "tr",height = unit(1, "cm"), width = unit(1, "cm"), style = ggspatial::north_arrow_nautical(text_size = 8)) +
+  labs(title = "1999 - 2000", x = "", y = "", fill = "SD") +
+  annotate("text", x = Inf, y = -Inf, hjust = 1.1, vjust = -0.5, label = credit_text,size = 2.5, color = "black",fontface = "italic") +
+  theme_bw()
+
+Occ2_sd <- ggplot() +
+  tidyterra::geom_spatraster_rgb(data=osm) + 
+  geom_sf(data = Z, mapping = aes(fill = z2_sd), alpha = 0.5) +
+  scale_fill_gradientn(colors = Palette(4), limits = c(0,0.5)) +
+  ggspatial::annotation_scale(location = "bl", line_width = 0.15 ,height = unit(0.15, "cm")) +
+  ggspatial::annotation_north_arrow(location = "tr",height = unit(1, "cm"), width = unit(1, "cm"), style = ggspatial::north_arrow_nautical(text_size = 8)) +
+  labs(title = "2009 - 2010", x = "", y = "", fill = "SD") +
+  annotate("text", x = Inf, y = -Inf, hjust = 1.1, vjust = -0.5, label = credit_text,size = 2.5, color = "black",fontface = "italic") +
+  theme_bw()
+
+Occ3_sd <- ggplot() +
+  tidyterra::geom_spatraster_rgb(data=osm) + 
+  geom_sf(data = Z, mapping = aes(fill = z3_sd), alpha = 0.5) +
+  scale_fill_gradientn(colors = Palette(4), limits = c(0,0.5)) +
+  ggspatial::annotation_scale(location = "bl", line_width = 0.15 ,height = unit(0.15, "cm")) +
+  ggspatial::annotation_north_arrow(location = "tr",height = unit(1, "cm"), width = unit(1, "cm"), style = ggspatial::north_arrow_nautical(text_size = 8)) +
+  labs(title = "2019 - 2020", x = "", y = "", fill = "SD") +
+  annotate("text", x = Inf, y = -Inf, hjust = 1.1, vjust = -0.5, label = credit_text,size = 2.5, color = "black",fontface = "italic") +
+  theme_bw()
+
+Occ <- ggpubr::ggarrange(Occ1, Occ1_sd, Occ2, Occ2_sd, Occ3, Occ3_sd, 
+                         labels = c("A", "B", "C", "D", "E", "F"),
+                         ncol = 2, nrow = 3)
+
+Occ 
+
+# save
+# ggplot2::ggsave(plot = Occ, dpi = 600,  width = 10, height = 12, device = "png", filename = "Lynx/outputs/Occ.png")
+```
+
+## Resistance map 
+```{r}
+gridFrCropped.cost <- sf::st_crop(gridFrCroppedSampled, raster::extent(c(720000, 1090000, 6400000, 6700000))) %>%
+  sf::st_as_sf(coords = c("X","Y"), crs = sp::CRS(as.character("+proj=lcc +lat_1=49 +lat_2=44 +lat_0=46.5 +lon_0=3 +x_0=700000 +y_0=6600000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"))) %>% 
+  mutate(area = sf::st_area(.) %>% as.numeric) %>% # remove cells that are too small
+  filter(area >= 1*10^8) %>%
+  sf::st_transform(crs = 2154)
+
+Buffer <- sf::st_buffer(gridFrCropped.cost,
+                        dist = 50000) %>% # make 50km Buffer around traps
+  sf::st_union() %>%
+  sf::st_make_valid()
+
+osm.cost <- maptiles::get_tiles(Buffer, crop = TRUE, zoom = 7) 
+rcov <- Dist2Highways
+rcov@data@values <- rcov@data@values/sd(rcov@data@values) 
+
+cost.value <- array(NA, dim =c(length(rcov@data@values),3*5000))
+for(j in 1:(3*5000)){
+  cost.value[,j] <- exp(outputs$alpha2[j] * rcov@data@values)
+}
+
+Cost <- tibble(median = apply(cost.value, MARGIN = 1, FUN=median, na.rm=TRUE),
+               sd = apply(cost.value, MARGIN = 1, FUN=sd, na.rm=TRUE),
+               lower95 = apply(cost.value, MARGIN = 1, FUN=quantile,na.rm=TRUE, probs = 0.025),
+               upper95 = apply(cost.value, MARGIN = 1, FUN=quantile,na.rm=TRUE, probs = 0.975)) %>%
+  cbind(rcov %>% 
+  raster::as.data.frame(xy = TRUE))
+
+Palette <- colorRampPalette(c("#095786","#0090ab","#e6cea0","#db4646","#ae0000")) 
+
+ResSurface <- ggplot() +
+  tidyterra::geom_spatraster_rgb(data = osm.cost) + 
+  geom_raster(data = Cost,
+              mapping = aes(x = x, y = y, fill = median), alpha = 0.6) +
+  scale_fill_gradientn(name = "Median posterior \ncost value", na.value = "white", colors = Palette(4)) +
+  geom_sf(data = gridFrCroppedSampled, lwd = 0.1, alpha = 0, color = "black") +
+  #geom_sf(data = borders, lwd = 0.2, color = "black") +
+  ggspatial::annotation_scale(location = "bl", line_width = 0.15 ,height = unit(0.15, "cm")) +
+  ggspatial::annotation_north_arrow(location = "tr",height = unit(1, "cm"), width = unit(1, "cm"), style = ggspatial::north_arrow_nautical(text_size = 8)) +
+  labs(title = "", x = "", y = "") +
+  annotate("text", x = Inf, y = -Inf, hjust = 1.1, vjust = -0.5, label = credit_text,size = 2.5, color = "black",fontface = "italic")+
+  theme_bw() 
+
+Palette <- colorRampPalette(c("white","#94d2bd", "#2a9d8f", "#264653"))
+ResSurface_sd <- ggplot() +
+  tidyterra::geom_spatraster_rgb(data = osm.cost) + 
+  geom_raster(data = Cost,
+              mapping = aes(x = x, y = y, fill = sd), alpha = 0.6) +
+  scale_fill_gradientn(name = "SD", na.value = "white", colors = Palette(4)) +
+  geom_sf(data = gridFrCroppedSampled, lwd = 0.1, alpha = 0, color = "black") +
+  #geom_sf(data = borders, lwd = 0.2, color = "black") +
+  ggspatial::annotation_scale(location = "bl", line_width = 0.15 ,height = unit(0.15, "cm")) +
+  ggspatial::annotation_north_arrow(location = "tr",height = unit(1, "cm"), width = unit(1, "cm"), style = ggspatial::north_arrow_nautical(text_size = 8)) +
+  labs(title = " ", x = "", y = "") +
+  annotate("text", x = Inf, y = -Inf, hjust = 1.1, vjust = -0.5, label = credit_text,size = 2.5, color = "black",fontface = "italic")+
+  theme_bw() 
+
+ResistanceSurface <- ggpubr::ggarrange(ResSurface, ResSurface_sd, 
+                           labels = c("A", "B"),
+                           ncol = 2, nrow = 1)
+
+ResistanceSurface
+
+# save
+# ggplot2::ggsave(plot = ResistanceSurface, dpi = 600, width = 11, height = 4,device = "png", filename = "Lynx/outputs/ResistanceSurfaceGrid.png")
+```
