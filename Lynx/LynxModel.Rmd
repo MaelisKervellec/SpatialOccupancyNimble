@@ -1,0 +1,264 @@
+---
+title: "Lynx case study"
+author: "Maëlis Kervellec"
+date: "2023-08-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(ggplot2)
+library(raster)
+library(gdistance)
+library(mapview)
+library(nimble)
+library(parallel)
+```
+ 
+# I - Load detection/non-detection data 
+```{r}
+source("Lynx/functionsLynx.R")
+load("Lynx/data/Data99.RData")
+load("Lynx/data/gridFrCroppedSampled.RData")
+
+M <- Data[["nsites"]]
+J <- Data[["nsurveys"]]
+T <- Data[["nseasons"]]
+```
+
+# II - Load covariates 
+
+```{r}
+Box <- sf::st_buffer(gridFrCroppedSampled, dist = 55000) %>% # make 55km Buffer around traps
+  sf::st_bbox()
+
+StudyArea <- sf::st_polygon(list(cbind(c(Box$xmin,Box$xmin,Box$xmax,Box$xmax,Box$xmin),
+                                       c(Box$ymax,Box$ymin,Box$ymin,Box$ymax,Box$ymax)))) %>%
+  sf:: st_sfc(crs = 2154) 
+```
+
+```{r}
+# https://land.copernicus.eu/pan-european/corine-land-cover
+# clc1999_raster <- raster::raster("Lynx/data/CLC/u2006_clc2000_v2020_20u1_raster100m/DATA/U2006_CLC2000_V2020_20u1.tif") 
+# 
+# # Crop to the study area
+# gridFrCropped.clc <- gridFrCroppedSampled %>%
+#   sf::st_transform(crs = 3035) # project the study area in the some system of coordinate as clc1999
+# 
+# clc1999_crop <- raster::crop(clc1999_raster, raster::extent(gridFrCropped.clc)) # crop clc1999_raster to the study area
+# 
+# forest <- (clc1999_crop == 23 | clc1999_crop == 24 | clc1999_crop == 25) # extract forest
+# # 23 = 311 : Broad leaved forest
+# # 24 = 312 : Coniferous forest
+# # 25 = 313 : Mixed forest
+# 
+# # Compute for each cell the percentage of forest cover
+# ForestCover <- raster::extract(forest, gridFrCropped.clc, fun = mean, na.rm = TRUE)
+# 
+# #save(ForestCover, file = "Lynx/data/ForestCover99.RData")
+
+load("Lynx/data/ForestCover99.RData")
+```
+
+## Distance to highways
+```{r}
+# Make the grid around sites
+## Buffer
+# Buffer <- sf::st_buffer(gridFrCropped,
+#                         dist = 50000) %>% # make 50km Buffer around traps
+#   sf::st_union() %>%
+#   sf::st_make_valid()
+# 
+# ## Extract highways
+# Highways <- osmdata::opq(bbox = Buffer %>%
+#                            sf::st_transform(crs = 4326) %>%
+#                            sf::st_bbox(),
+#                          timeout = 10000) %>%
+#   osmdata::add_osm_feature(key = "highway", value = c("motorway", "motorway_link")) %>%
+#   osmdata::osmdata_sf()
+# 
+# Highways <- Highways[["osm_lines"]] %>%
+#   sf::st_transform(2154)
+# 
+# # raster center points
+# box <- sf::st_as_sfc(sf::st_bbox(Buffer))
+# grid <- sf::st_make_grid(box, cellsize = 2500, square = TRUE, what = "centers") %>% # make the resistance raster having a 2.5 x 2.5 km resolution 
+#   sf::st_transform(crs = 2154)
+# sf::st_crs(grid)
+# sf::st_crs(Highways)
+# # distance from center to closest river
+# nearest_road <- sf::st_nearest_feature(grid, Highways)
+# dist_road <-  sf::st_distance(grid, Highways$geometry[nearest_road], by_element=TRUE)
+# 
+# coords <- sf::st_coordinates(grid)
+# 
+# rcov.df <- data.frame(x = coords[,1],
+#                    y = coords[,2],
+#                    dist_road = as.numeric(dist_road))
+# 
+# Dist2Highways <- rcov.df %>%
+#   raster::rasterFromXYZ(crs = 2154)
+# 
+# save(Dist2Highways, file = "Lynx/data/DistanceToHighways.RData")
+
+load("Lynx/data/DistanceToHighways.RData")
+```
+
+# III - Model 
+## Compute cached matrix
+```{r, eval = FALSE}
+load("Lynx/data/xy99_Lynx.RData")
+
+rcov <- Dist2Highways
+rcov@data@values <- rcov@data@values/sd(rcov@data@values) 
+M <- nrow(xy)
+
+xy <- xy %>%
+  sf::st_coordinates()
+
+# Alpha array
+alphaValues <- round(seq(-5, 0, by=0.1), digits=1)
+cached.circuit.reduced <- array(NA, c(M, M, length(alphaValues)))
+
+for(a in 1:length(alphaValues)){
+  cached.circuit.reduced[1:M,1:M,a] <- CircuitDistance(alphaValues[a]) # compute distances between habitat cells and traps for each defined alpha2
+  save(cached.circuit.reduced, file = "Lynx/data/cached_circuit_Lynx_reduced99.RData")
+}
+```
+
+## Run
+```{r, eval=FALSE}
+this_cluster <- makeCluster(3)
+
+my.constants <- list(nsites = M, 
+                     nsurveys = J, 
+                     nseasons = T)
+
+# y <- array(y, dim = c(M,J,T))
+my.data <- list(y = Data[["y"]],
+                effort = Data[["effort"]], 
+                binaryEffort = Data[["binaryEffort"]],
+                cached = cached.circuit.reduced[1:M,1:M,1:51], 
+                forest = Data[["forest"]],
+                one = 1)
+
+run_MCMC_allcode <- function(info, data, constants, model) {
+  library(nimble)
+  
+  occupancy <- nimbleModel(code = model, 
+                           data = data,
+                           constants = constants,
+                           inits = info$inits,
+                           calculate = FALSE) # first tip
+  
+  Coccupancy <- nimble::compileNimble(occupancy)
+  
+  
+  occupancyConf <- nimble::configureMCMC(occupancy,
+                                         enableWAIC = TRUE,
+                                         monitors = c("z", "alpha_p", "beta_p","alpha_psi1","beta_psi1", "sigma", "gamma0", "alpha2", "phi"))
+  #occupancyConf$removeSamplers(c('alpha2')) # if problem in convergence possibility to change the sampler
+  #occupancyConf$addSampler(target = c('alpha2'), type = 'slice')
+  
+  occupancyMCMC <- buildMCMC(occupancyConf, useConjugacy = FALSE)
+  
+  CoccupancyMCMC <- compileNimble(occupancyMCMC,
+                                  project = occupancy)
+  
+  # Run Nimble
+  samples <- nimble::runMCMC(mcmc = CoccupancyMCMC,
+                             niter = 10000,
+                             nburnin = 5000,
+                             WAIC = TRUE)
+  #setSeed = info$seed)
+  return(samples)}
+
+per_chain_info <- list(
+  list(#seed = 1,
+    inits = list(z = array(1, dim = c(M, T)),
+                 alpha_p = -1,
+                 beta_p = 0.2,
+                 alpha_psi1 = 0.2,
+                 beta_psi1 = -2,
+                 sigma = 0.5,
+                 gamma0 = 0.1,
+                 alpha2 = -2,
+                 phi = 0.8)),
+  list(#seed = 2,
+    inits = list(z = array(1, dim = c(M, T)),
+                 alpha_p = -2,
+                 beta_p = 0.5,
+                 alpha_psi1 = 0.2,
+                 beta_psi1 = 2,
+                 sigma = 1,
+                 gamma0 = 0.05,
+                 alpha2 = -4,
+                 phi = 0.9)),
+  list(#seed = 3,
+    inits = list(z = array(1, dim = c(M, T)),
+                 alpha_p = 1,
+                 beta_p = 0.7,
+                 alpha_psi1 = 0.2,
+                 beta_psi1 = 1,
+                 sigma = 2,
+                 gamma0 = 0.2,
+                 alpha2 = -3,
+                 phi = 0.7)))
+
+
+chain_output <- parLapply(cl = this_cluster, X = per_chain_info,
+                          fun = run_MCMC_allcode,
+                          data = my.data,
+                          constants = my.constants,
+                          model = model.lynx)
+stopCluster(this_cluster)
+
+output <- list(chain_output[[1]][["samples"]],
+               chain_output[[2]][["samples"]],
+               chain_output[[3]][["samples"]])
+
+save(output, file = "Lynx/outputs/OccupancyLynxChains5.RData")
+```
+
+```{r}
+load("Lynx/outputs/OccupancyLynxChains5.RData")
+MCMCvis::MCMCtrace(object = output,
+                   pdf = FALSE, # no export to PDF
+                   params = c("alpha_p","beta_p","alpha_psi1","beta_psi1","sigma", "gamma0", "alpha2", "phi"),
+                   ind = TRUE, 
+                   iter = 9000) # only plot the 9000 last iteration 
+```
+
+# IV - Results
+```{r}
+# Get OpenStreetMap Tiles 
+osm <- maptiles::get_tiles(StudyArea, crop = TRUE, zoom = 7) 
+credit_text <- maptiles::get_credit("OpenStreetMap") 
+```
+
+## Forest cover
+```{r}
+Forest <- gridFrCroppedSampled %>%
+  mutate(forest = ForestCover)
+
+Palette <- colorRampPalette(c("white","#aad576","#73a942","#538d22", "#245501", "#1a4301", "#143601"))
+
+ForestCoverMap <- ggplot() +
+  tidyterra::geom_spatraster_rgb(data=osm) + 
+  geom_sf(data = Forest, mapping = aes(fill = forest), alpha = 0.4) +
+  scale_fill_gradientn(colors = Palette(4)) +
+  #geom_sf(data = borders, lwd = 0.2, color = "black") +
+  ggspatial::annotation_scale(location = "bl", line_width = 0.15 ,height = unit(0.15, "cm")) +
+  ggspatial::annotation_north_arrow(location = "tl",height = unit(1, "cm"), width = unit(1, "cm"), style = ggspatial::north_arrow_nautical(text_size = 8)) +
+  labs(title = " ", x = "", y = "", fill = "Forest cover") +
+  annotate("text", x = Inf, y = -Inf, hjust = 1.1, vjust = -0.5, label = credit_text,size = 2.5, color = "black",fontface = "italic")+
+  theme_bw()
+
+ForestCoverMap
+
+# save
+# ggplot2::ggsave(plot = ForestCoverMap, dpi = 600,  width = 7, height = 7, device = "png", filename = "Lynx/outputs/ForestCoverMap.png")
+```
+
