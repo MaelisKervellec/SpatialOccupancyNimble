@@ -29,7 +29,6 @@ T <- Data[["nseasons"]]
 ```
 
 # II - Load covariates 
-
 ```{r}
 Box <- sf::st_buffer(gridFrCroppedSampled, dist = 55000) %>% # make 55km Buffer around traps
   sf::st_bbox()
@@ -39,6 +38,7 @@ StudyArea <- sf::st_polygon(list(cbind(c(Box$xmin,Box$xmin,Box$xmax,Box$xmax,Box
   sf:: st_sfc(crs = 2154) 
 ```
 
+## Forest cover
 ```{r}
 # https://land.copernicus.eu/pan-european/corine-land-cover
 # clc1999_raster <- raster::raster("Lynx/data/CLC/u2006_clc2000_v2020_20u1_raster100m/DATA/U2006_CLC2000_V2020_20u1.tif") 
