@@ -1,5 +1,5 @@
 # SpatialOccupancyNimble 
-Here, you can find the [scripts](https://github.com/MaelisKervellec/SpatialOccupancyNimble/blob/main/Spatial Occupancy Scripts/SpatialOccupancyScripts.R) to run spatial occupancy models from simulated data using Nimble (de Valpine et al., 2017).
+Here, you can find the [scripts](https://github.com/MaelisKervellec/SpatialOccupancyNimble/blob/main/SpatialOccupancyModels/SpatialOccupancyScripts.R) to run spatial occupancy models from simulated data using Nimble (de Valpine et al., 2017).
 
 You can also find the scripts and data to run the two cases study on [Eurasian otter](https://github.com/MaelisKervellec/SpatialOccupancyNimble/blob/main/Otter/) and [Eurasian lynx](https://github.com/MaelisKervellec/SpatialOccupancyNimble/blob/main/Lynx/). We study the recolonisation of these two carnivores in France using detection/non-detection data (:dna: :camera_flash:) and spatial occupancy models accommodated with commute distance from circuit theory :zap:.   
 The first case study focus on the Eurasian otter :otter: in the Massif central between 2003 an 2012, and use the river network to model the landscape structure.  
