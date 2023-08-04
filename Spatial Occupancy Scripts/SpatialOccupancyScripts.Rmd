@@ -107,9 +107,9 @@ M <- nrow(xy) # Number of sites
 J <- 4 # num secondary sample periods
 T <- 3 # num primary sample periods
 psi1 <- 5/M # initial occupancy probability
-alpha2 <- -1.5 # resistance parameter for Circuit
-sigma <- 0.2 # scale parameter
-gamma0 <- 0.2 # basebarrier colonization probability
+alpha2 <- -2 # resistance parameter for Circuit
+sigma <- 0.1 # scale parameter
+gamma0 <- 0.2 # baseline colonization probability
 phi <- 0.9 # persistence probability
 p <- 0.5 # detection probability
 
