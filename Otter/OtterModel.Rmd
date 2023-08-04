@@ -245,6 +245,7 @@ InitialOcc
 # save
 #ggplot2::ggsave(plot = InitialOcc, dpi = 600,  width = 7, height = 7, device = "png", filename = "Otter/outputs/InitialOcc.png")
 ```
+
 ## Extinction / colonization probabilities / resistance parameter 
 ```{r}
 alphaValues <- round(seq(0, 5, by=0.1), digits=1)

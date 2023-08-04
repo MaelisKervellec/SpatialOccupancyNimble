@@ -1,6 +1,5 @@
 require(nimble)
 
-### Set of function needed in the simulation study to compute connectivity from occupancy data ###
 inv.logit <- function(x){
   y <- exp(x)/(1+exp(x))
   return(y)
