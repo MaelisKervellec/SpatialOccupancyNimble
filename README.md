@@ -1,9 +1,9 @@
 # SpatialOccupancyNimble 
-Here, you can find the [scripts](https://github.com/MaelisKervellec/SpatialOccupancyNimble/blob/main/SpatialOccupancyModels/SpatialOccupancyScripts.R) to run spatial occupancy models from simulated data using Nimble (de Valpine et al., 2017).
+Here, you can find the [scripts](https://github.com/MaelisKervellec/SpatialOccupancyNimble/blob/main/SpatialOccupancyModels/SpatialOccupancyScripts.R) to run spatial occupancy models from simulated data using Nimble (de Valpine et al., 2017). We provide the scripts to run non-spatial occupancy models (Mackenzie et al., 2017), spatial occupancy models with Euclidean distance (Chandler et al. 2015), least-cost path distance (Howell et al., 2018) and commute distance. 
 
 You can also find the scripts and data to run the two cases study on [Eurasian otter](https://github.com/MaelisKervellec/SpatialOccupancyNimble/blob/main/Otter/) and [Eurasian lynx](https://github.com/MaelisKervellec/SpatialOccupancyNimble/blob/main/Lynx/). We study the recolonisation of these two carnivores in France using detection/non-detection data (:dna: :camera_flash:) and spatial occupancy models accommodated with commute distance from circuit theory :zap:.   
-The first case study focus on the Eurasian otter :otter: in the Massif central between 2003 an 2012, and use the river network to model the landscape structure.  
-The second case study focus on the Eurasian lynx :cat: in the Jura mountains between 1999 and 2020. We assume that highways restricted lynx recolonisation in France.   
+The first case study focus on Eurasian otter :otter: dispersal in the Massif central between 2003 an 2012, and use the river network to model the landscape structure.  
+The second case study focus on Eurasian lynx :cat: recolonisation in the Jura mountains between 1999 and 2020. We assume that highways impede lynx recolonisation in France.   
 
 ## References
 
