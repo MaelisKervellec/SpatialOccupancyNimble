@@ -1,0 +1,416 @@
+---
+title: "Spatial occupancy models from simulated occupancy data"
+author: "Maëlis Kervellec"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(nimble)
+library(patchwork)
+
+theme_set(theme_light(base_size = 14))
+```
+
+In this script, we present four occupancy models fitted to simulated data. Among the four models, three incorporate spatial components by utilizing different distance metrics: Euclidean distance, least-cost path (LCP) distance, and commute distance. 
+
+
+# 1. Simulate data 
+## 1.1 Define the resistance surface and occupancy surface 
+
+First, we choose a structured landscape from which we are going to define the resistance surface and sampling sites. To define barriers we define a study area around a small portion of the river network in Aveyron in France. The resistance surface is computed as the distance to the rivers, thereafter called barriers. We kept a 2 pixels buffer to define the 11 by 11 sampling grid. 
+
+```{r}
+source("SpatialOccupancyModels/functions.R")
+load("SpatialOccupancyModels/barriers.RData")
+
+# Define extend of the study area ----------------------------------------------
+box <- tibble(X = c(553055, 553055,565055, 565055),
+              Y = c(1909587, 1921587, 1909587, 1921587)) %>%
+  sf::st_as_sf(coords = c("X","Y"), crs = 27572) %>%
+  sf::st_make_grid() %>%
+  sf::st_union()
+
+# Make a grid ------------------------------------------------------------------
+grid <- sf::st_make_grid(box, cellsize = 250, square = TRUE) %>%
+  sf::st_sf() %>%
+  dplyr::mutate(id = 1:nrow(.))
+
+# Compute the distance to the barrier ------------------------------------------
+nearest_barrier <- sf::st_nearest_feature(grid, barriers)
+dist_barrier <-  sf::st_distance(grid, barriers$geometry[nearest_barrier], by_element = TRUE)
+grid <- grid %>%
+  dplyr::mutate(dist_barrier = dist_barrier)
+
+# Rasterize --------------------------------------------------------------------
+coords <- grid %>%
+  sf::st_centroid() %>%
+  sf::st_coordinates()
+
+rcov <- data.frame(x = coords[,1],
+                   y = coords[,2],
+                   dist_barrier = as.numeric(dist_barrier))%>%
+  raster::rasterFromXYZ(crs = 27572)
+
+rcov@data@values <- rcov@data@values/sd(rcov@data@values) 
+
+mapview::mapview(barriers) + mapview::mapview(rcov)
+
+# Occupancy sites --------------------------------------------------------------
+box_sites  <- tibble(X = c(553055+500, 553055+500, 565055-500, 565055-500),
+                     Y = c(1909587+500, 1921587-500, 1909587+500, 1921587-500)) %>%
+  sf::st_as_sf(coords = c("X","Y"), crs = 27572) %>%
+  sf::st_make_grid() %>%
+  sf::st_union()
+
+grid_sites <- sf::st_make_grid(box_sites, cellsize = 1000, square = TRUE) %>%
+  sf::st_sf() %>%
+  dplyr::mutate(id = 1:nrow(.))
+mapview::mapview(rcov)+ mapview::mapview(grid_sites)
+
+xy <- sf::st_coordinates(sf::st_centroid(grid_sites))[,c("X","Y")] # occupancy sites coordinates
+```
+In total the resistance surface is composed of `r nrow(grid)` pixels, and the occupancy surface contains `r nrow(grid_sites)` sites. 
+
+## 1.2 Compare least-cost path distance to commute distance
+
+We compare LCP and commute distances. We choose a source pixel in the landscape and then compute the two distances to all pixel in the landscape, for a given resistance parameter. 
+```{r}
+alpha <- -0.5
+leastcostpath_1 <- LCP(alpha)
+circuitdistance_1 <- CircuitDistance(alpha)
+
+# Correlation
+i <- 60
+cor(leastcostpath_1[i,],circuitdistance_1[i,])
+
+# Map the 2 resistance raster from cell (1,1), with the 2 methods
+A <- data.frame(x=xy[,1],y=xy[,2],value=leastcostpath_1[i,])
+B <- data.frame(x=xy[,1],y=xy[,2],value=circuitdistance_1[i,])
+
+Palette <- colorRampPalette(c("#e0e1dd","#778da9","#415a77", "#1b263b", "#0d1b2a"))
+
+Source <- data.frame(x=xy[i,1],y=xy[i,2])
+mapA <- ggplot()+
+  geom_raster(data = A, mapping = aes(x=x, y=y, fill= value))+
+  scale_fill_gradientn(colors = Palette(5)) +
+  geom_point(data = Source, mapping = aes(x=x,y=y), col = "#e63946") +
+  ggtitle("Least cost path distance, \nalpha = -0.5 ")
+
+mapB <- ggplot()+
+  geom_raster(data = B, mapping = aes(x=x, y=y, fill= value))+
+  scale_fill_gradientn(colors = Palette(5)) +
+  geom_point(data = Source, mapping = aes(x=x,y=y), col = "#e63946") +
+  ggtitle("Commute distance, \nalpha = -0.5 ")
+
+mapA + mapB
+```
+
+## 1.3 Simulate occupancy data 
+
+We simulate detection history data in this landscape. We assume that the true model is the model with commute distance. 
+```{r}
+# Set variable -----------------------------------------------------------------
+M <- nrow(xy) # number of sites
+J <- 4 # number of sampling occasions
+T <- 3 # number of seasons
+psi1 <- 5/M # initial occupancy probability
+alpha2 <- -2 # resistance parameter for Circuit
+sigma <- 0.1 # scale parameter
+gamma0 <- 0.2 # baseline colonization probability
+phi <- 0.9 # persistence probability
+p <- 0.5 # detection probability
+
+# Simulate detection/non-detection data ----------------------------------------
+Data <- Simulate_occ_data(M, J, T, psi1, alpha2, sigma, gamma0, phi, p, method = "Circuit") # if method = "LCP", you can simulate detection/non-detection data according to a spatial occupancy model with LCP distance
+
+# Plot true presence/absence at each season ------------------------------------ 
+grid_sites <- grid_sites %>%
+  dplyr::mutate(nbDet =  rowSums(Data[["y"]][,,1]),
+                Presence1 = Data[["z"]][,1],
+                Presence2 = Data[["z"]][,2],
+                Presence3 = Data[["z"]][,3])
+
+grid_sites %>%
+  ggplot2::ggplot() +
+  ggplot2::geom_sf(aes(fill = Presence1))
+grid_sites %>%
+  ggplot2::ggplot() +
+  ggplot2::geom_sf(aes(fill = Presence2))
+grid_sites %>%
+  ggplot2::ggplot() +
+  ggplot2::geom_sf(aes(fill = Presence3))
+```
+# 2. Fit spatial occupancy models 
+
+In this section, we present 4 occupancy models and fit them to our simulated data using NIMBLE. 
+
+## 2.1 No distance 
+
+The first model is the standard occupancy model defined by Mackenzie et al. (2017). This non-spatial model accounts for detection and dynamic colonisation/extinction of sites. 
+
+```{r}
+# Data and constants 
+my.constants <- list(nsites = M, 
+                     nsurveys = J, 
+                     nseasons = T)
+my.data <- list(y = apply(Data[["y"]], MARGIN = c(1,3), FUN = sum))
+
+zst <- array(1, dim = c(M, T))
+initial.values <- function(){ list(z = zst, psi1 = runif(1,0,1), gamma = runif(1,0,1), phi = runif(1,0,1), p = runif(1,0,1))}
+
+# Initialization and compilation
+occupancy <- nimbleModel(code = mackenzie.model, 
+                         data = my.data,
+                         constants = my.constants,
+                         inits = initial.values(),
+                         calculate = FALSE) # first tip
+
+Coccupancy <- compileNimble(occupancy)
+
+occupancyConf <- configureMCMC(occupancy,
+                               enableWAIC = TRUE)
+
+occupancyMCMC <- buildMCMC(occupancyConf, useConjugacy = FALSE) # second tip
+
+CoccupancyMCMC <- compileNimble(occupancyMCMC, 
+                                project = occupancy)
+
+# Run Nimble
+samples <- runMCMC(mcmc = CoccupancyMCMC, 
+                   niter = 10000, 
+                   nburnin = 5000,
+                   nchains = 2,
+                   WAIC = TRUE)
+
+# Plots
+mcmc.output.mackenzie <- samples
+mcmc.output.mackenzie$WAIC
+MCMCvis::MCMCtrace(object = mcmc.output.mackenzie$samples,
+                   pdf = FALSE, # no export to PDF
+                   ind = TRUE, 
+                   params = c("gamma", "psi1", "phi", "p"),
+                   gvals = c(NA, psi1, phi, p))
+```
+
+
+## 2.2 Euclidean distance  
+
+This spatial occupancy model was defined by Chandler et al. (2015). This hierarchical model extend the previous one by integrating an Euclidean distance in the colonization process. 
+
+```{r}
+# Compute distance between sites 
+d <- AHMbook::e2dist(xy,xy) # euclidean distance between all pairs of sites
+distSq <- (d^2)/sd(d^2) # Need distance squared in half-normal kernel, and reduce to avoid large values and help convergence
+
+# Data and constants
+my.constants <- list(nsites = M, 
+                     nsurveys = J, 
+                     nseasons = T,
+                     distSq = distSq)
+
+my.data <- list(y = apply(Data[["y"]], MARGIN = c(1,3), FUN = sum))
+
+zst <- array(1, dim = c(M, T))
+
+initial.values <- function(){ list(z = zst, 
+                                   psi1 = runif(1,0,1), 
+                                   sigma = rgamma(1, shape = 1, rate = 1),
+                                   gamma0 = runif(1,0,1),
+                                   phi = runif(1,0,1), 
+                                   p = runif(1,0,1))}
+
+# Initialization and compilation
+occupancy <- nimble::nimbleModel(code = euclidean.model, 
+                                 data = my.data,
+                                 constants = my.constants,
+                                 inits = initial.values(),
+                                 calculate = FALSE) # first tip
+
+Coccupancy <- nimble::compileNimble(occupancy)
+
+occupancyConf <- nimble::configureMCMC(occupancy,
+                                       enableWAIC = TRUE)
+
+occupancyMCMC <- nimble::buildMCMC(occupancyConf, useConjugacy = FALSE) # second tip
+
+CoccupancyMCMC <- nimble::compileNimble(occupancyMCMC, 
+                                        project = occupancy)
+
+# Run Nimble
+samples <- nimble::runMCMC(mcmc = CoccupancyMCMC, 
+                           niter = 10000, 
+                           nburnin = 5000,
+                           nchains = 2,
+                           WAIC = TRUE)
+
+# Plots
+mcmc.output.euclidean <- samples
+mcmc.output.euclidean$WAIC
+MCMCvis::MCMCtrace(object = mcmc.output.euclidean$samples,
+                   pdf = FALSE, # no export to PDF
+                   ind = TRUE, 
+                   params = c("gamma0", "sigma", "psi1", "phi", "p"),
+                   gvals = c(gamma0, sigma, psi1, phi, p))
+```
+
+## 2.3 Least-cost path distance 
+
+This spatial occupancy model was defined by Howell et al. (2018). This model account for resistance of the landscape in between sites movements. To do so, it include a LCP distance in the colonization process, which allows for an explicit estimation of connectivity. 
+
+### 2.3.1 Compute cached matrix 
+
+To avoid to compute LCP distance at each MCMC iteration, we precalculate distance between sites for a set of alpha2 values and store them in a "cached matrix". 
+
+```{r}
+# Alpha array
+alphaValues <- round(seq(-5, 5, by=0.1), digits=1)
+cached.lcp <- array(NA, c(M, M, length(alphaValues)))
+
+for(a in 1:length(alphaValues)){
+  cached.lcp[1:M,1:M,a] <- leastcostpath(alphaValues[a]) # compute distances between sites for each defined alpha2
+  print(a)}
+```
+
+### 2.3.2 Run model
+
+```{r}
+# Data and constants
+my.constants <- list(nsites = M, 
+                     nsurveys = J, 
+                     nseasons = T)
+
+my.data <- list(y = apply(Data[["y"]], MARGIN = c(1,3), FUN = sum),
+                cached = cached.lcp,
+                one = 1)
+
+zst <- array(1, dim = c(M, T))
+
+initial.values <- function(){ list(z = zst, 
+                                   psi1 = runif(1,0,1), 
+                                   sigma = rgamma(1, shape = 1, rate = 1),
+                                   gamma0 = runif(1,0,1),
+                                   phi = runif(1,0,1), 
+                                   p = runif(1,0,1),
+                                   alpha2 = runif(1,-5,5))}
+
+# Initialization and compilation
+occupancy <- nimble::nimbleModel(code = lcp.model.cached, 
+                                 data = my.data,
+                                 constants = my.constants,
+                                 inits = initial.values(),
+                                 calculate = FALSE) # first tip
+
+Coccupancy <- nimble::compileNimble(occupancy)
+
+
+occupancyConf <- nimble::configureMCMC(occupancy,
+                                       enableWAIC = TRUE)
+
+occupancyMCMC <- nimble::buildMCMC(occupancyConf, useConjugacy = FALSE) # second tip
+
+
+CoccupancyMCMC <- nimble::compileNimble(occupancyMCMC, 
+                                        project = occupancy)
+
+
+# Run Nimble
+samples <- nimble::runMCMC(mcmc = CoccupancyMCMC, 
+                           niter = 10000, 
+                           nburnin = 5000,
+                           nchains = 2,
+                           WAIC = TRUE)
+
+# Plots
+mcmc.output.lcp <- samples
+mcmc.output.lcp$WAIC
+MCMCvis::MCMCtrace(object = mcmc.output.lcp$samples,
+                   pdf = FALSE, # no export to PDF
+                   ind = TRUE, 
+                   params = c("gamma0", "sigma", "psi1", "phi", "p", "alpha2"),
+                   gvals = c(gamma0, sigma, psi1, phi, p, alpha2))
+```
+
+## 2.4  Commute distance from circuit theory
+
+### 2.4.1 Compute cached matrix 
+
+To avoid to compute commute distance at each MCMC iteration, we precalculate distance between sites for a set of alpha2 values and store them in a "cached matrix"
+```{r}
+# Alpha array
+alphaValues <- round(seq(-5, 5, by=0.1), digits=1)
+cached.circuit <- array(NA, c(M, M, length(alphaValues)))
+
+for(a in 1:length(alphaValues)){
+  cached.circuit[1:M,1:M,a] <- CircuitDistance(alphaValues[a]) # compute distances between sites for each defined alpha2
+  print(a)}
+```
+
+### 2.4.2 Run model
+```{r}
+# Data and constants --------------------------
+my.constants <- list(nsites = M, 
+                     nsurveys = J, 
+                     nseasons = T)
+
+my.data <- list(y = apply(Data[["y"]], MARGIN = c(1,3), FUN = sum),
+                cached = cached.circuit,
+                one = 1)
+
+zst <- array(1, dim = c(M, T))
+
+initial.values <- function(){ list(z = zst, 
+                                   psi1 = runif(1,0,1), 
+                                   sigma = rgamma(1, shape = 1, rate = 1),
+                                   gamma0 = runif(1,0,1),
+                                   phi = runif(1,0,1), 
+                                   p = runif(1,0,1),
+                                   alpha2 = runif(1,-5,5))}
+
+# Initialization and compilation
+occupancy <- nimble::nimbleModel(code = circuit.model.cached, 
+                                 data = my.data,
+                                 constants = my.constants,
+                                 inits = initial.values(),
+                                 calculate = FALSE) # first tip
+
+Coccupancy <- nimble::compileNimble(occupancy)
+
+occupancyConf <- nimble::configureMCMC(occupancy,
+                                       enableWAIC = TRUE)
+
+occupancyMCMC <- nimble::buildMCMC(occupancyConf, useConjugacy = FALSE) # second tip
+
+
+CoccupancyMCMC <- nimble::compileNimble(occupancyMCMC, 
+                                        project = occupancy)
+
+# Run Nimble
+samples <- nimble::runMCMC(mcmc = CoccupancyMCMC, 
+                           niter = 10000, 
+                           nburnin = 5000,
+                           nchains = 2,
+                           WAIC = TRUE)
+
+# Plots
+mcmc.output.circuit <- samples
+mcmc.output.circuit$WAIC
+MCMCvis::MCMCtrace(object = mcmc.output.circuit$samples,
+                   pdf = FALSE, # no export to PDF
+                   ind = TRUE, 
+                   params = c("gamma0", "sigma", "psi1", "phi", "p", "alpha2"),
+                   gvals = c(gamma0, sigma, psi1, phi, p, alpha2))
+```
+
+# References
+
+Chandler, R. B., E. Muths, B. H. Sigafus, C. R. Schwalbe, C. J. Jarchow, and B. R. Hossack. 2015. Spatial occupancy models for predicting metapopulation dynamics and viability following reintroduction. Journal of Applied Ecology 52:1325–1333.
+
+Howell, P. E., E. Muths, B. R. Hossack, B. H. Sigafus, and R. B. Chandler. 2018. Increasing connectivity between metapopulation ecology and landscape ecology. Ecology 99:1119–1128.
+
+MacKenzie, D. I., J. D. Nichols, J. A. Royle, K. H. Pollock, L. Bailey, and J. E. Hines. 2017. Occupancy Estimation and Modeling: Inferring Patterns and Dynamics of Species Occurrence. Second edition. Elsevier.
+
+de Valpine, P., D. Turek, C. J. Paciorek, C. Anderson-Bergman, D. T. Lang, and R. Bodik. 2017. Programming with models: writing statistical algorithms for general model structures with NIMBLE. Journal of Computational and Graphical Statistics 26:403–413.
