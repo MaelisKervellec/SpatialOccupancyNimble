@@ -152,7 +152,7 @@ In this section, we present 4 occupancy models and fit them to our simulated dat
 
 The first model is the standard occupancy model defined by Mackenzie et al. (2017). This non-spatial model accounts for detection and dynamic colonisation/extinction of sites. 
 
-```{r, eval=FALSE}
+```{r}
 # Data and constants 
 my.constants <- list(nsites = M, 
                      nsurveys = J, 
@@ -201,7 +201,7 @@ MCMCvis::MCMCtrace(object = mcmc.output.mackenzie$samples,
 
 This spatial occupancy model was defined by Chandler et al. (2015). This hierarchical model extend the previous one by integrating an Euclidean distance in the colonization process. 
 
-```{r, eval=FALSE}
+```{r}
 # Compute distance between sites 
 d <- AHMbook::e2dist(xy,xy) # euclidean distance between all pairs of sites
 distSq <- (d^2)/sd(d^2) # Need distance squared in half-normal kernel, and reduce to avoid large values and help convergence
@@ -265,7 +265,7 @@ This spatial occupancy model was defined by Howell et al. (2018). This model acc
 
 To avoid to compute LCP distance at each MCMC iteration, we precalculate distance between sites for a set of alpha2 values and store them in a "cached matrix". 
 
-```{r, eval=FALSE}
+```{r}
 # Alpha array
 alphaValues <- round(seq(-5, 5, by=0.1), digits=1)
 cached.lcp <- array(NA, c(M, M, length(alphaValues)))
@@ -277,7 +277,7 @@ for(a in 1:length(alphaValues)){
 
 ### 2.3.2 Run model
 
-```{r, eval=FALSE}
+```{r}
 # Data and constants
 my.constants <- list(nsites = M, 
                      nsurveys = J, 
@@ -339,7 +339,7 @@ MCMCvis::MCMCtrace(object = mcmc.output.lcp$samples,
 ### 2.4.1 Compute cached matrix 
 
 To avoid to compute commute distance at each MCMC iteration, we precalculate distance between sites for a set of alpha2 values and store them in a "cached matrix"
-```{r, eval=FALSE}
+```{r}
 # Alpha array
 alphaValues <- round(seq(-5, 5, by=0.1), digits=1)
 cached.circuit <- array(NA, c(M, M, length(alphaValues)))
@@ -350,7 +350,7 @@ for(a in 1:length(alphaValues)){
 ```
 
 ### 2.4.2 Run model
-```{r, eval=FALSE}
+```{r}
 # Data and constants --------------------------
 my.constants <- list(nsites = M, 
                      nsurveys = J, 

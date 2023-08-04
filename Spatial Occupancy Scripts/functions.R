@@ -204,20 +204,6 @@ lcp.model <- nimble::nimbleCode({
 })
 
 ## 3.2 Cached ----------------------------------------------------------------
-
-# Make a nimble function to access to the value in the cached matrix
-# Avoid to load a too big matrix 
-
-AccessCached.lcp <- function(AlphaID){
-  distSq <- cached.lcp.scaled[,,AlphaID]
-  return(distSq)
-}
-
-AccessCachedNim.lcp <- nimbleRcall(function(AlphaID = double(0)){},
-                                   Rfun = 'AccessCached.lcp',
-                                   returnType = double(2))
-
-
 lcp.model.cached <- nimble::nimbleCode({
   
   # Priors: ecological parameter
@@ -232,7 +218,6 @@ lcp.model.cached <- nimble::nimbleCode({
   # computation of distances for a given resistance
   AlphaID <- trunc(alpha2*10+51) # formula (round(alpha2,1)*10+51)  to find were the distances values are recorded for these alpha 
   distSq[1:nsites,1:nsites] <- cached[1:nsites, 1:nsites,AlphaID] / sd(cached[1:nsites, 1:nsites,AlphaID])# retrive distances from the cached matrix 
-  #distSq[1:nsites,1:nsites] <- AccessCachedNim.lcp(AlphaID)
   
   # ecological submodel
   for (i in 1:nsites){
@@ -338,7 +323,6 @@ circuit.model.cached <- nimble::nimbleCode({
   # computation of distances for a given resistance
   AlphaID <- trunc(alpha2*10+51) # formula (round(alpha2,1)*10+51)  to find were the distances values are recorded for these alpha 
   distSq[1:nsites,1:nsites] <- cached[1:nsites, 1:nsites,AlphaID]/ sd(cached[1:nsites, 1:nsites,AlphaID]) # retrieve distances from the cached matrix 
-  
   
   # ecological submodel
   for (i in 1:nsites){
