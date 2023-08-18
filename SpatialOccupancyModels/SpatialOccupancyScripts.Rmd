@@ -15,7 +15,7 @@ library(patchwork)
 theme_set(theme_light(base_size = 14))
 ```
 
-In this script, we present four occupancy models fitted to simulated data. Among the four models, three incorporate spatial components by utilizing different distance metrics: Euclidean distance, least-cost path (LCP) distance, and commute distance. 
+In this script, we introduce four occupancy models fitted to simulated data. Among the four models, three incorporate spatial components by utilizing different distance metrics: Euclidean distance, least-cost path (LCP) distance, and commute distance. 
 
 
 # 1. Simulate data 
