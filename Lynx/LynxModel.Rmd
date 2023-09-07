@@ -16,7 +16,7 @@ library(mapview)
 library(nimble)
 library(parallel)
 ```
- 
+
 # I - Load detection/non-detection data 
 ```{r}
 source("Lynx/functionsLynx.R")
@@ -228,6 +228,14 @@ MCMCvis::MCMCtrace(object = output,
                    pdf = FALSE, # no export to PDF
                    params = c("alpha_p","beta_p","alpha_psi1","beta_psi1","sigma", "gamma0", "alpha2", "phi"),
                    ind = TRUE, 
+                   iter = 9000) # only plot the 9000 last iteration
+
+MCMCvis::MCMCtrace(object = output,
+                   pdf = FALSE, # no export to PDF
+                   ind = TRUE,
+                   Rhat = TRUE, # add Rhat
+                   n.eff = TRUE,
+                   params = c("alpha_p","beta_p","alpha_psi1","beta_psi1","sigma", "gamma0", "alpha2", "phi"),
                    iter = 9000) # only plot the 9000 last iteration 
 ```
 
@@ -365,9 +373,9 @@ for (j in 1:dim(cached.circuit.reduced)[2]){
     HNcolj$median[i] <- median(col)
     HNcolj$lower[i] <- quantile(col,na.rm=TRUE, probs = 0.025)
     HNcolj$upper[i] <- quantile(col,na.rm=TRUE, probs = 0.975)
-    }
-  HNcol <- HNcol %>% rbind(HNcolj)
   }
+  HNcol <- HNcol %>% rbind(HNcolj)
+}
 
 Col <- ggplot() +
   geom_ribbon(data = HNcol, mapping = aes(ymin=lower, ymax=upper, x = d), alpha= 0.5, fill = "#dda15e") +
@@ -521,7 +529,7 @@ Cost <- tibble(median = apply(cost.value, MARGIN = 1, FUN=median, na.rm=TRUE),
                lower95 = apply(cost.value, MARGIN = 1, FUN=quantile,na.rm=TRUE, probs = 0.025),
                upper95 = apply(cost.value, MARGIN = 1, FUN=quantile,na.rm=TRUE, probs = 0.975)) %>%
   cbind(rcov %>% 
-  raster::as.data.frame(xy = TRUE))
+          raster::as.data.frame(xy = TRUE))
 
 Palette <- colorRampPalette(c("#095786","#0090ab","#e6cea0","#db4646","#ae0000")) 
 
@@ -553,8 +561,8 @@ ResSurface_sd <- ggplot() +
   theme_bw() 
 
 ResistanceSurface <- ggpubr::ggarrange(ResSurface, ResSurface_sd, 
-                           labels = c("A", "B"),
-                           ncol = 2, nrow = 1)
+                                       labels = c("A", "B"),
+                                       ncol = 2, nrow = 1)
 
 ResistanceSurface
 # save

@@ -175,6 +175,14 @@ MCMCvis::MCMCtrace(object = output,
                    params = c("beta_psi1","alpha_psi1", "p", "sigma", "gamma0", "alpha2", "phi"),
                    ind = TRUE, 
                    iter = 5000) 
+
+MCMCvis::MCMCtrace(object = output,
+                   pdf = FALSE, # no export to PDF
+                   ind = TRUE,
+                   Rhat = TRUE, # add Rhat
+                   n.eff = TRUE,
+                   params = c("beta_psi1","alpha_psi1", "p", "sigma", "gamma0", "alpha2", "phi"),
+                   iter = 5000) # only plot the 5000 last iteration 
 ```
 
 
