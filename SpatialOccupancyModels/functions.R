@@ -144,7 +144,7 @@ leastcostpath <- function(alpha){
   
   # obtain resistance surface
   cost <- exp(alpha * rcov)
-  # calculate conductances among neighbours 
+  # compute conductances among neighbours 
   # probability of transition from one cell to another
   tr <- gdistance::transition(x = cost, 
                               transitionFunction = function(x) 1/mean(x),
@@ -161,7 +161,7 @@ leastcostpath <- function(alpha){
   d^2
 }
 
-# Create the nimble funtion to compute distance between sites 
+# Create the nimble function to compute distance between sites 
 LCP <- nimbleRcall(function(alpha = double(0)){},
                    Rfun = 'leastcostpath',
                    returnType = double(2))
@@ -249,7 +249,7 @@ circuitdistance <- function(alpha){
   # xy is a matrix of dims nsites x 2
   # obtain resistance surface
   cost <- exp(alpha * rcov)    
-  # calculate conductances among neighbours 
+  # compute conductance among neighbours 
   # probability of transition from one cell to another
   tr <- gdistance::transition(x = cost, 
                               transitionFunction = function(x) 1/mean(x),
