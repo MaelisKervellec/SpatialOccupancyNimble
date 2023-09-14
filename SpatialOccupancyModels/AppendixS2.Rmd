@@ -1,7 +1,7 @@
 ---
 title: "Appendix S2"
-author: "Maëlis Kervellec"
-date: "2023-09-13"
+author: ""
+date: ""
 output: pdf_document
 ---
 
@@ -9,11 +9,18 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+**Bringing circuit theory into spatial occupancy models to assess landscape connectivity**, Maëlis Kervellec, Thibaut Couturier, Sarah Bauduin, Pierre Defos du Rau, Nolwenn Drouet-Hoguet, Christophe Duchamp, Julien Steinmetz, Jean-Michel Vandel, Olivier Gimenez
+  
+   
+We present in the following document the code to write dynamic occupancy models using nimble (de Valpine et al., 2017). Reproducible examples with simulated data are available on Zenodo XX in the `SpatialOccupancyModels` folder. 
+
 ```{r}
 require(nimble)
 ```
 
-# 1. Dynamic occupancy model 
+# 1. Dynamic occupancy model  
+You can find here the nimble code to run standard dynamic occupancy models. For more information on the model see Mackenzie et al. (2017). 
+  
 ```{r, eval = FALSE}
 mackenzie.model <- nimbleCode({
   
@@ -43,7 +50,9 @@ mackenzie.model <- nimbleCode({
 ```
 
 
-# 2. Spatial dynamic occupancy model 
+# 2. Spatial dynamic occupancy model  
+You can find here the nimble code to run spatial dynamic occupancy models using euclidean distance. For more information on the model see Chandler et al. (2015). 
+  
 ```{r, eval = FALSE}
 ## Define distance -------------------------------------------------------------
 d <- AHMbook::e2dist(xy,xy) # euclidean distance between all pairs of sites
@@ -84,7 +93,9 @@ euclidean.model <- nimble::nimbleCode({
 })
 ```
 
-# 3. Spatial dynamic occupancy model accomodated with Least Cost Path distance
+# 3. Spatial dynamic occupancy model accomodated with Least Cost Path distance  
+You can find here the nimble code to run spatial dynamic occupancy models using least cost path distance. For more information on the model see Howell et al. (2018). 
+  
 ```{r, eval = FALSE}
 ## Define distance -------------------------------------------------------------
 leastcostpath <- function(alpha){
@@ -159,7 +170,9 @@ lcp.model <- nimble::nimbleCode({
 })
 ```
 
-# 3. Spatial dynamic occupancy model accomodated with commute distance
+# 3. Spatial dynamic occupancy model accomodated with commute distance  
+You can find here the nimble code to run spatial dynamic occupancy models using commute distance from circuit theory. More information on the model are presented in the paper.  
+  
 ```{r, eval = FALSE}
 ## Define distance -------------------------------------------------------------
 circuitdistance <- function(alpha){
@@ -227,4 +240,14 @@ circuit.model <- nimble::nimbleCode({
   }
 })
 ```
+
+# References
+
+Chandler, R. B., E. Muths, B. H. Sigafus, C. R. Schwalbe, C. J. Jarchow, and B. R. Hossack. 2015. Spatial occupancy models for predicting metapopulation dynamics and viability following reintroduction. Journal of Applied Ecology 52:1325–1333.
+
+Howell, P. E., E. Muths, B. R. Hossack, B. H. Sigafus, and R. B. Chandler. 2018. Increasing connectivity between metapopulation ecology and landscape ecology. Ecology 99:1119–1128.
+
+MacKenzie, D. I., J. D. Nichols, J. A. Royle, K. H. Pollock, L. Bailey, and J. E. Hines. 2017. Occupancy Estimation and Modeling: Inferring Patterns and Dynamics of Species Occurrence. Second edition. Elsevier.
+
+de Valpine, P., D. Turek, C. J. Paciorek, C. Anderson-Bergman, D. T. Lang, and R. Bodik. 2017. Programming with models: writing statistical algorithms for general model structures with NIMBLE. Journal of Computational and Graphical Statistics 26:403–413.
 
