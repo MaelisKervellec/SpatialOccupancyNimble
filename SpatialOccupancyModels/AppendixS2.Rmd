@@ -9,7 +9,7 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-**Bringing circuit theory into spatial occupancy models to assess landscape connectivity**, Maëlis Kervellec, Thibaut Couturier, Sarah Bauduin, Pierre Defos du Rau, Nolwenn Drouet-Hoguet, Christophe Duchamp, Julien Steinmetz, Jean-Michel Vandel, Olivier Gimenez
+**Bringing circuit theory into spatial occupancy models to assess landscape connectivity**, Maëlis Kervellec, Thibaut Couturier, Sarah Bauduin, Delphine Chenesseau, Pierre Defos du Rau, Nolwenn Drouet-Hoguet, Christophe Duchamp, Julien Steinmetz, Jean-Michel Vandel, Olivier Gimenez
   
    
 We present in the following document the code to implement dynamic occupancy models using NIMBLE (de Valpine et al., 2017). Reproducible examples with simulated data are available on Zenodo XX in the `SpatialOccupancyModels` folder. 
