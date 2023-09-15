@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 **Bringing circuit theory into spatial occupancy models to assess landscape connectivity**, Maëlis Kervellec, Thibaut Couturier, Sarah Bauduin, Pierre Defos du Rau, Nolwenn Drouet-Hoguet, Christophe Duchamp, Julien Steinmetz, Jean-Michel Vandel, Olivier Gimenez
   
    
-We present in the following document the code to write dynamic occupancy models using nimble (de Valpine et al., 2017). Reproducible examples with simulated data are available on Zenodo XX in the `SpatialOccupancyModels` folder. 
+We present in the following document the code to implement dynamic occupancy models using NIMBLE (de Valpine et al., 2017). Reproducible examples with simulated data are available on Zenodo XX in the `SpatialOccupancyModels` folder. 
 
 ```{r}
 require(nimble)
@@ -27,7 +27,7 @@ mackenzie.model <- nimbleCode({
   # Priors: ecological parameters
   psi1 ~ dunif(0, 1)  # initial occupancy probability
   gamma ~ dunif(0, 1) # colonization probability
-  phi ~ dunif(0, 1)   # extinction probability
+  phi ~ dunif(0, 1)   # persistence probability
   p ~ dunif(0, 1)     # detection probability
   
   # ecological submodel
@@ -65,7 +65,7 @@ euclidean.model <- nimble::nimbleCode({
   psi1 ~ dunif(0, 1)   # first session occupancy probability
   gamma0 ~ dunif(0, 1) # baseline colonization probability
   sigma ~ dgamma(shape = 1, rate = 1) # scale parameter
-  phi ~ dunif(0, 1)   # extinction probability
+  phi ~ dunif(0, 1)   # persistence probability
   p ~ dunif(0, 1)     # detection probability
   
   # ecological submodel
@@ -93,7 +93,7 @@ euclidean.model <- nimble::nimbleCode({
 })
 ```
 
-# 3. Spatial dynamic occupancy model accomodated with Least Cost Path distance  
+# 3. Spatial dynamic occupancy model accomodating Least Cost Path distance  
 You can find here the nimble code to run spatial dynamic occupancy models using least cost path distance. For more information on the model see Howell et al. (2018). 
   
 ```{r, eval = FALSE}
@@ -138,7 +138,7 @@ lcp.model <- nimble::nimbleCode({
   gamma0 ~ dunif(0, 1) # baseline colonization probability
   alpha2 ~ dunif(-5, 5) # resistance parameter
   sigma ~ dgamma(shape = 1, rate = 1) # scale parameter
-  phi ~ dunif(0, 1)   # extinction probability
+  phi ~ dunif(0, 1)   # persistence probability
   p ~ dunif(0, 1)     # detection probability
   
   # computation of distances for a given resistance
@@ -178,7 +178,7 @@ You can find here the nimble code to run spatial dynamic occupancy models using 
 circuitdistance <- function(alpha){
   # alpha is a scalar
   # rcov is a RasterLayer
-  # xy is a matrix of dims nsites x 2
+  # xy is a matrix of dims nsites times 2
   # obtain resistance surface
   cost <- exp(alpha * rcov)    
   # compute conductances among neighbours 
@@ -210,7 +210,7 @@ circuit.model <- nimble::nimbleCode({
   gamma0 ~ dunif(0, 1) # baseline colonization probability
   alpha2 ~ dunif(-5, 5) # resistance parameter
   sigma ~ dgamma(shape = 1, rate = 1) # scale parameter
-  phi ~ dunif(0, 1)   # extinction probability
+  phi ~ dunif(0, 1)   # persistence probability
   p ~ dunif(0, 1)     # detection probability
   
   # computation of distances for a given resistance

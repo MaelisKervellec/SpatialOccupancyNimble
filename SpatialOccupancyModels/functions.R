@@ -17,7 +17,7 @@ Simulate_occ_data <- function(M, J, T, psi1, alpha2, sigma, gamma0, phi, p, meth
   # alpha2 = resistance parameter
   # sigma = scale parameter
   # gamma0 = baseline colonization probability 
-  # phi = persistence probability = 1 - extinction probability
+  # phi = persistence probability = 1 - persistence probability
   # p = detection probability
   # method = method used to compute distance between site: 
   # - "LCP" = Least Cost Path (Howell et al. 2018), 
@@ -79,7 +79,7 @@ mackenzie.model <- nimbleCode({
   # Priors: ecological parameters
   psi1 ~ dunif(0, 1)  # initial occupancy probability
   gamma ~ dunif(0, 1) # colonization probability
-  phi ~ dunif(0, 1)   # extinction probability
+  phi ~ dunif(0, 1)   # persistence probability
   p ~ dunif(0, 1)     # detection probability
   
   # ecological submodel
@@ -107,7 +107,7 @@ euclidean.model <- nimble::nimbleCode({
   psi1 ~ dunif(0, 1)   # first session occupancy probability
   gamma0 ~ dunif(0, 1) # baseline colonization probability
   sigma ~ dgamma(shape = 1, rate = 1) # scale parameter
-  phi ~ dunif(0, 1)   # extinction probability
+  phi ~ dunif(0, 1)   # persistence probability
   p ~ dunif(0, 1)     # detection probability
   
   # ecological submodel
@@ -173,7 +173,7 @@ lcp.model <- nimble::nimbleCode({
   gamma0 ~ dunif(0, 1) # baseline colonization probability
   alpha2 ~ dunif(-5, 5) # resistance parameter
   sigma ~ dgamma(shape = 1, rate = 1) # scale parameter
-  phi ~ dunif(0, 1)   # extinction probability
+  phi ~ dunif(0, 1)   # persistence probability
   p ~ dunif(0, 1)     # detection probability
   
   # computation of distances for a given resistance
@@ -212,7 +212,7 @@ lcp.model.cached <- nimble::nimbleCode({
   alpha2 ~ dunif(-5, 5) # resistance parameter
   sigma ~ dgamma(shape = 1, rate = 1) # scale parameter
   one ~ dconstraint(alpha2 >= -5 & alpha2 <= 5) # be sure that alpha2 is not outside cached array
-  phi ~ dunif(0, 1)   # extinction probability
+  phi ~ dunif(0, 1)   # persistence probability
   p ~ dunif(0, 1)     # detection probability
   
   # computation of distances for a given resistance
@@ -278,7 +278,7 @@ circuit.model <- nimble::nimbleCode({
   gamma0 ~ dunif(0, 1) # baseline colonization probability
   alpha2 ~ dunif(-5, 5) # resistance parameter
   sigma ~ dgamma(shape = 1, rate = 1) # scale parameter
-  phi ~ dunif(0, 1)   # extinction probability
+  phi ~ dunif(0, 1)   # persistence probability
   p ~ dunif(0, 1)     # detection probability
   
   # computation of distances for a given resistance
@@ -317,7 +317,7 @@ circuit.model.cached <- nimble::nimbleCode({
   alpha2 ~ dunif(-5, 5) # resistance parameter
   one ~ dconstraint(alpha2 >= -5 & alpha2 <= 5) # be sure that alpha2 is not outside cached array
   sigma ~ dgamma(shape = 1, rate = 1) # scale parameter
-  phi ~ dunif(0, 1)   # extinction probability
+  phi ~ dunif(0, 1)   # persistence probability
   p ~ dunif(0, 1)     # detection probability
   
   # computation of distances for a given resistance
