@@ -1,4 +1,5 @@
 # SpatialOccupancyNimble 
+![DOI](https://zenodo.org/badge/674256765.svg)](https://zenodo.org/badge/latestdoi/674256765) 
 Here, you can find the [scripts](https://github.com/MaelisKervellec/SpatialOccupancyNimble/blob/main/SpatialOccupancyModels) to run spatial occupancy models from simulated data using Nimble (de Valpine et al., 2017). We provide the scripts to run non-spatial occupancy models (Mackenzie et al., 2017), spatial occupancy models with Euclidean distance (Chandler et al. 2015), least-cost path distance (Howell et al., 2018) and commute distance. 
 
 You can also find the scripts and data to run the two case studies on [Eurasian otter](https://github.com/MaelisKervellec/SpatialOccupancyNimble/blob/main/Otter/) and [Eurasian lynx](https://github.com/MaelisKervellec/SpatialOccupancyNimble/blob/main/Lynx/). We study the recolonisation of these two carnivores in France using detection/non-detection data (:dna: :camera_flash:) and spatial occupancy models accommodated with commute distance from circuit theory :zap:.   
